@@ -2,7 +2,11 @@
 #include "owb_rmt.h"
 #include "ds18b20.h"
 #include "freertos/task.h"
-#include "bleprph.h"
+#include "misc.h"
+#include "string.h"
+
+ 
+
 
 #define MAX_DEVICES (8)
 #define DS18B20_RESOLUTION (DS18B20_RESOLUTION_12_BIT)
@@ -12,7 +16,7 @@
 
 // TaskHandle_t xHandle = NULL;
 
-
+void TempResultCorrect (struct TempReading *tempReading);
 void vTaskCode(void *pvParameters)
 {
 
@@ -82,6 +86,15 @@ void vTaskCode(void *pvParameters)
 
     // Read temperatures more efficiently by starting conversions on all devices at the same time
 
+
+
+
+     
+
+
+
+
+
     if (num_devices > 0)
     {
         for (;;)
@@ -107,7 +120,15 @@ void vTaskCode(void *pvParameters)
             }
 
             // Print results in a separate loop, after all have been read
-            printf("\nTemperature readings (degrees C): sample %d\n", ++sample_count);
+            //printf("\nTemperature readings (degrees C): sample %d\n", ++sample_count);
+            //printf("\nTemperature readings (degrees C): sample %d\n", ++sample_count);
+
+            for (int i = 0; i < num_devices; ++i)
+            {
+               // printf("Sensor %d: %3.2f\n", i, readings[i]);
+                // "Sensor %f",  readings[i]
+            }
+
             for (int i = 0; i < num_devices; ++i)
             {
                 owb_string_from_rom_code((*devices[i]).rom_code, deviceIds[i], sizeof(deviceIds[i]));
@@ -117,14 +138,42 @@ void vTaskCode(void *pvParameters)
                 }
             }
 
-               struct TempReading tempReading = {
-                    .ucMessageID = {{}},
-                    .ucReading = {0.0f},
-                    .ucError = {0}
-                };
+            struct TempReading tempReading = {
+                .ucMessageID = {{}},
+                .ucReading = {0.0f},
+                .ucError = {0}
+            };
+
             memcpy(tempReading.ucReading, readings, sizeof(tempReading.ucReading) );
             memcpy(tempReading.ucError, errors, sizeof(tempReading.ucError) );
             memcpy(tempReading.ucMessageID, deviceIds, sizeof(tempReading.ucMessageID) );
+                       
+            TempResultCorrect(&tempReading);
+
+            for (int i = 0; i < 8; ++i)
+            {
+        
+
+                if (strcmp(tempReading.ucMessageID[i], "") == 0 )
+                {
+                    //printf("Sensor%did       :                  Reading: %3.2f   Corrected: %3.2f \n",i, tempReading.ucReading[i], tempReading.ucCorrected[i] );
+                    
+                }
+                else 
+                {
+                    //printf("Sensor %d id     :%s  Reading: %3.2f  Corrected: %3.2f \n",i,tempReading.ucMessageID[i], tempReading.ucReading[i], tempReading.ucCorrected[i]  );
+                    printf("%lld;%d;%s;%3.2f;%3.2f\n", esp_timer_get_time() ,i, tempReading.ucMessageID[i], tempReading.ucReading[i], tempReading.ucCorrected[i] );
+                }
+
+                
+            }
+
+
+
+
+
+
+
 
             xQueueSend(messageQueue, &tempReading, 20);
             vTaskDelayUntil(&last_wake_time, SAMPLE_PERIOD / portTICK_PERIOD_MS);

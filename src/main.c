@@ -9,8 +9,10 @@
 #include "console/console.h"
 #include "services/gap/ble_svc_gap.h"
 #include "bleprph.h"
+#include "misc.h"
 
 #include "freertos/queue.h"
+
 
 
 
@@ -381,7 +383,7 @@ app_main(void)
     }
 
     temp_svc_start(xMessageBuffer);
-    temp_ctrl_svc_start(xTempControlBuffer);
+    //temp_ctrl_svc_start(xTempControlBuffer);
 
 
  
