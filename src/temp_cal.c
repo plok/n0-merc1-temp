@@ -21,25 +21,6 @@ struct CorrectionData correctionDataTable[8] =   {
 
 void TempResultCorrect (struct TempReading *tempReading)
 {
-    for (int i = 0; i < 8; ++i)
-    {
-
-        if (strcmp((*tempReading).ucMessageID[i], "") == 0 )
-        {
-            //printf("Sensor%did       :                  Reading: %3.2f   Corrected: %3.2f \n",i, (*tempReading).ucReading[i], (*tempReading).ucCorrected[i] );
-        }
-        else 
-        {
-            //printf("Sensor %d id     :%s  Reading: %3.2f  Corrected: %3.2f \n", i, (*tempReading).ucMessageID[i], (*tempReading).ucReading[i], (*tempReading).ucCorrected[i]  );
-        }
-
-        
-    }
-
-    for (int i = 0; i < 8; ++i)
-    {
-        //printf("CorrectionID%d   :%s  a:%3.2f b:%3.2f \n",i,correctionDataTable[i].device, correctionDataTable[i].a,correctionDataTable[i].b );
-    }
 
     int matchcount = 0;
         for (int i = 0; i < 8; ++i)
