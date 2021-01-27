@@ -1,3 +1,4 @@
+
 #ifndef MISC
 #define MISC
 
@@ -16,6 +17,14 @@ struct CorrectionData
     float b;
 };
 
+enum SystemStates 
+{
+    Idle,
+    Calibrating,
+    Session_idle,
+    Session_heating,
+    Session_maintaining
+};
 
 #endif
 

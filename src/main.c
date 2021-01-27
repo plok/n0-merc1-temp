@@ -26,6 +26,9 @@ void ble_store_config_init(void);
 void temp_svc_start(QueueHandle_t);
 void temp_ctrl_svc_start(QueueHandle_t);
 
+enum SystemStates SystemState = Idle;
+
+
 /**
  * Logs information about a connection to the console.
  */

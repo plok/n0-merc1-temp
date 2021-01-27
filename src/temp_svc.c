@@ -5,18 +5,19 @@
 #include "misc.h"
 #include "string.h"
 
- 
-
-
 #define MAX_DEVICES (8)
 #define DS18B20_RESOLUTION (DS18B20_RESOLUTION_12_BIT)
 #define SAMPLE_PERIOD (1000)
 #define GPIO_DS18B20_0 26
 
+extern enum SystemStates SystemState;
 
 // TaskHandle_t xHandle = NULL;
 
+void Calibration_Intinialize(float temp_lo, float temp_hi, int size, float precision);
+void Calibrate(struct TempReading tempReading);
 void TempResultCorrect (struct TempReading *tempReading);
+
 void vTaskCode(void *pvParameters)
 {
 
@@ -86,15 +87,6 @@ void vTaskCode(void *pvParameters)
 
     // Read temperatures more efficiently by starting conversions on all devices at the same time
 
-
-
-
-     
-
-
-
-
-
     if (num_devices > 0)
     {
         for (;;)
@@ -120,8 +112,7 @@ void vTaskCode(void *pvParameters)
             }
 
             // Print results in a separate loop, after all have been read
-            //printf("\nTemperature readings (degrees C): sample %d\n", ++sample_count);
-            //printf("\nTemperature readings (degrees C): sample %d\n", ++sample_count);
+            printf("\nTemperature readings (degrees C): sample %d\n", ++sample_count);
 
             for (int i = 0; i < num_devices; ++i)
             {
@@ -150,9 +141,23 @@ void vTaskCode(void *pvParameters)
                        
             TempResultCorrect(&tempReading);
 
+            if(sample_count == 3)
+            {
+                printf("SystemState: %d\n", SystemState);
+                printf("SystemState to Calibration\n");
+                SystemState = Calibrating;
+                Calibration_Intinialize(21, 35, 20, 0.2);
+            }
+            if(SystemState == Calibrating)
+            {
+                printf("SystemState: %d\n", SystemState);
+                Calibrate(tempReading);
+            }
+
+
+            /*
             for (int i = 0; i < 8; ++i)
             {
-        
 
                 if (strcmp(tempReading.ucMessageID[i], "") == 0 )
                 {
@@ -165,14 +170,19 @@ void vTaskCode(void *pvParameters)
                     printf("%lld;%d;%s;%3.2f;%3.2f\n", esp_timer_get_time() ,i, tempReading.ucMessageID[i], tempReading.ucReading[i], tempReading.ucCorrected[i] );
                 }
 
-                
             }
+            */
+
+            if(SystemState == Idle)
+            {
 
 
+            }
+            else if(SystemState == Calibrating)
+            {
+                
 
-
-
-
+            }
 
 
             xQueueSend(messageQueue, &tempReading, 20);
