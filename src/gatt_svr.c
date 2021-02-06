@@ -6,6 +6,7 @@
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 #include "bleprph.h"
+#include "misc.h"
 #define SAMPLE_PERIOD (1000)
 
 /**
@@ -200,7 +201,7 @@ void vBleTask(void *pvParameters)
           if (temp_val_handle) {
             reading = readMessage;
              ble_gatts_chr_updated(temp_val_handle);
-            printf("BLE notified!\n");
+            //printf("BLE notified!\n");
 
 
           }

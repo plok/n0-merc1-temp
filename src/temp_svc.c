@@ -2,16 +2,21 @@
 #include "owb_rmt.h"
 #include "ds18b20.h"
 #include "freertos/task.h"
-#include "bleprph.h"
+#include "misc.h"
+#include "string.h"
 
 #define MAX_DEVICES (8)
 #define DS18B20_RESOLUTION (DS18B20_RESOLUTION_12_BIT)
 #define SAMPLE_PERIOD (1000)
 #define GPIO_DS18B20_0 26
 
+extern enum SystemStates SystemState;
 
 // TaskHandle_t xHandle = NULL;
 
+void Calibration_Intinialize(float temp_lo, float temp_hi, int size, float precision);
+void Calibrate(struct TempReading tempReading);
+void TempResultCorrect (struct TempReading *tempReading);
 
 void vTaskCode(void *pvParameters)
 {
@@ -108,6 +113,13 @@ void vTaskCode(void *pvParameters)
 
             // Print results in a separate loop, after all have been read
             printf("\nTemperature readings (degrees C): sample %d\n", ++sample_count);
+
+            for (int i = 0; i < num_devices; ++i)
+            {
+               // printf("Sensor %d: %3.2f\n", i, readings[i]);
+                // "Sensor %f",  readings[i]
+            }
+
             for (int i = 0; i < num_devices; ++i)
             {
                 owb_string_from_rom_code((*devices[i]).rom_code, deviceIds[i], sizeof(deviceIds[i]));
@@ -117,14 +129,61 @@ void vTaskCode(void *pvParameters)
                 }
             }
 
-               struct TempReading tempReading = {
-                    .ucMessageID = {{}},
-                    .ucReading = {0.0f},
-                    .ucError = {0}
-                };
+            struct TempReading tempReading = {
+                .ucMessageID = {{}},
+                .ucReading = {0.0f},
+                .ucError = {0}
+            };
+
             memcpy(tempReading.ucReading, readings, sizeof(tempReading.ucReading) );
             memcpy(tempReading.ucError, errors, sizeof(tempReading.ucError) );
             memcpy(tempReading.ucMessageID, deviceIds, sizeof(tempReading.ucMessageID) );
+                       
+            TempResultCorrect(&tempReading);
+
+            if(sample_count == 3)
+            {
+                printf("SystemState: %d\n", SystemState);
+                printf("SystemState to Calibration\n");
+                SystemState = Calibrating;
+                Calibration_Intinialize(21, 35, 20, 0.2);
+            }
+            if(SystemState == Calibrating)
+            {
+                printf("SystemState: %d\n", SystemState);
+                Calibrate(tempReading);
+            }
+
+
+            /*
+            for (int i = 0; i < 8; ++i)
+            {
+
+                if (strcmp(tempReading.ucMessageID[i], "") == 0 )
+                {
+                    //printf("Sensor%did       :                  Reading: %3.2f   Corrected: %3.2f \n",i, tempReading.ucReading[i], tempReading.ucCorrected[i] );
+                    
+                }
+                else 
+                {
+                    //printf("Sensor %d id     :%s  Reading: %3.2f  Corrected: %3.2f \n",i,tempReading.ucMessageID[i], tempReading.ucReading[i], tempReading.ucCorrected[i]  );
+                    printf("%lld;%d;%s;%3.2f;%3.2f\n", esp_timer_get_time() ,i, tempReading.ucMessageID[i], tempReading.ucReading[i], tempReading.ucCorrected[i] );
+                }
+
+            }
+            */
+
+            if(SystemState == Idle)
+            {
+
+
+            }
+            else if(SystemState == Calibrating)
+            {
+                
+
+            }
+
 
             xQueueSend(messageQueue, &tempReading, 20);
             vTaskDelayUntil(&last_wake_time, SAMPLE_PERIOD / portTICK_PERIOD_MS);

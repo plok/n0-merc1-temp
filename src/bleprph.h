@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include "nimble/ble.h"
 #include "modlog/modlog.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -48,12 +49,7 @@ int scli_receive_key(int *key);
 void print_bytes(const uint8_t *bytes, int len);
 void print_addr(const void *addr);
 
-struct TempReading
-{
-    char ucMessageID [8][17];
-    float ucReading[ 8 ];
-    int ucError[ 8 ];
-}; 
+
 
 #ifdef __cplusplus
 }

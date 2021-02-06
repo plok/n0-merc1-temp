@@ -9,8 +9,10 @@
 #include "console/console.h"
 #include "services/gap/ble_svc_gap.h"
 #include "bleprph.h"
+#include "misc.h"
 
 #include "freertos/queue.h"
+
 
 
 
@@ -23,6 +25,9 @@ static uint8_t own_addr_type;
 void ble_store_config_init(void);
 void temp_svc_start(QueueHandle_t);
 void temp_ctrl_svc_start(QueueHandle_t);
+
+enum SystemStates SystemState = Idle;
+
 
 /**
  * Logs information about a connection to the console.
@@ -381,7 +386,7 @@ app_main(void)
     }
 
     temp_svc_start(xMessageBuffer);
-    temp_ctrl_svc_start(xTempControlBuffer);
+    //temp_ctrl_svc_start(xTempControlBuffer);
 
 
  
