@@ -11,10 +11,11 @@
 #define GPIO_DS18B20_0 26
 
 extern enum SystemStates SystemState;
+extern enum CalibrationStates CalibrationState;
 
 // TaskHandle_t xHandle = NULL;
 
-void Calibration_Intinialize(float temp_lo, float temp_hi, int size, float precision);
+void Calibration_Intinialize(float temp_lo, float temp_hi, int size, float precision, struct TempReading TempReading);
 void Calibrate(struct TempReading tempReading);
 void TempResultCorrect (struct TempReading *tempReading);
 
@@ -112,7 +113,7 @@ void vTaskCode(void *pvParameters)
             }
 
             // Print results in a separate loop, after all have been read
-            printf("\nTemperature readings (degrees C): sample %d\n", ++sample_count);
+            printf("measurement %d\n", ++sample_count);
 
             for (int i = 0; i < num_devices; ++i)
             {
@@ -143,47 +144,36 @@ void vTaskCode(void *pvParameters)
 
             if(sample_count == 3)
             {
-                printf("SystemState: %d\n", SystemState);
-                printf("SystemState to Calibration\n");
                 SystemState = Calibrating;
-                Calibration_Intinialize(21, 35, 20, 0.2);
+                printf("SystemState to Calibration\n");
+                Calibration_Intinialize(22, 23, 20, 0.13, tempReading);
             }
+            
+            if(SystemState == System_idle)
+            {
+                for(int i = 0; i < 8; i++)
+                {
+                    if(strcmp(tempReading.ucMessageID[i],"") != 0)
+                    {
+                        printf("%d\t%d\t%3.2f\t%3.2f\n", xTaskGetTickCount(), i, tempReading.ucReading[i],tempReading.ucCorrected[i]);
+                    }
+                }
+                printf("\n");
+            }
+            
             if(SystemState == Calibrating)
             {
-                printf("SystemState: %d\n", SystemState);
-                Calibrate(tempReading);
-            }
-
-
-            /*
-            for (int i = 0; i < 8; ++i)
-            {
-
-                if (strcmp(tempReading.ucMessageID[i], "") == 0 )
+                if(CalibrationState != Calibration_idle)
                 {
-                    //printf("Sensor%did       :                  Reading: %3.2f   Corrected: %3.2f \n",i, tempReading.ucReading[i], tempReading.ucCorrected[i] );
-                    
+                    Calibrate(tempReading);
                 }
-                else 
+                else
                 {
-                    //printf("Sensor %d id     :%s  Reading: %3.2f  Corrected: %3.2f \n",i,tempReading.ucMessageID[i], tempReading.ucReading[i], tempReading.ucCorrected[i]  );
-                    printf("%lld;%d;%s;%3.2f;%3.2f\n", esp_timer_get_time() ,i, tempReading.ucMessageID[i], tempReading.ucReading[i], tempReading.ucCorrected[i] );
+                    SystemState = System_idle;
+                    printf("SystemState to Idle\n");
                 }
-
             }
-            */
-
-            if(SystemState == Idle)
-            {
-
-
-            }
-            else if(SystemState == Calibrating)
-            {
-                
-
-            }
-
+           
 
             xQueueSend(messageQueue, &tempReading, 20);
             vTaskDelayUntil(&last_wake_time, SAMPLE_PERIOD / portTICK_PERIOD_MS);

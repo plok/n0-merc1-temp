@@ -3,62 +3,100 @@
 #include "string.h"
 #include "stdbool.h"
 #include "math.h"
+#include "nvs.h"
 
+//Calibration parameters
 float cal_temp_lo = 0.0;
 float cal_temp_hi = 100.0;
-float cal_temp_tolerance = 1.5;
-
+float cal_temp_tolerance = 1.0;
 int streak_size = 20;
 float streak_precision = 0.20;
 
+//Calibration data
+int sensor_count = 0;
 int sample_count = 0;
 float samples[8][60];
-float sample_average_precision[8][2];
+float samples_lo_average_precision[8][2];
+float samples_hi_average_precision[8][2];
+float samples_correction_parameters[8][2];
+
+//Forward Declarations
+int CountSensors(struct TempReading tempReading);
+void WaitForTemp(float cal_temp, struct TempReading tempReading);
+void CalibrateLoHi(float cal_temp, float sample_average_precision[8][2], struct TempReading tempReading);
+void FinalizeCalibration(struct TempReading tempReading);
+void PrintSampleData(float samples[8][60], int read_size, int write_location);
+void PrintAggregationData(float sample_average_precision[8][2]);
+void PrintCorrectionDataTable();
 
 
-
-enum CalibrationStates
-{
-    idle,
-    initializing,
-    wait_temp_lo,
-    calibrating_temp_lo,
-    wait_temp_hi,
-    calibrating_temp_hi,
-    finalize
-};
-
-enum CalibrationStates CalibrationState = idle;
+enum CalibrationStates CalibrationState = Calibration_idle;
 
 struct CorrectionData correctionDataTable[8] =   {
                                                     { {"31011927ec8fc828"}, 1.001185332, 0.19},
                                                     { {"36011927fd0a8c28"}, 0.997991542, 0.06},
                                                     { {"47011927f400ba28"}, 1.006506345, -0.12},
-                                                    { {"b8011927da669228"}, 1.007080133, -0.38},
-                                                    { {"                "}, 5.0, 0.5},
-                                                    { {"                "}, 6.0, 0.6},
-                                                    { {"                "}, 7.0, 0.7},
-                                                    { {"                "}, 8.0, 0.8}
+                                                    { {"ImNotARealSensor"}, 1.007080133, -0.38},
+                                                    { {"                "}, 0.0, 0.0},
+                                                    { {"ImNotARealSensor"}, 1.0, 0.1},
+                                                    { {"                "}, 0.0, 0.0},
+                                                    { {"                "}, 0.0, 0.0}
                                                     };
 
-
-void Calibration_Intinialize(float temp_lo, float temp_hi, int size, float precision)
+void Calibration_Intinialize(float temp_lo, float temp_hi, int size, float precision, struct TempReading tempReading)
 {
-    printf("Initializing Calibration Module... \n");
+    printf("Initializing Calibration.\n");
     
-    CalibrationState = initializing;
+    CalibrationState = Initializing;
 
     cal_temp_lo = temp_lo;
     cal_temp_hi = temp_hi;
     streak_size = size;
     streak_precision = precision;
     
+    sensor_count = CountSensors(tempReading);
     sample_count = 0;
+    
     //
     //implement resetting of sample_array
     //
     
-    CalibrationState = wait_temp_lo;
+    CalibrationState++;
+}
+
+void Calibrate(struct TempReading tempReading)
+{
+    printf("CalibrationState: %d\n", CalibrationState);
+    
+    switch(CalibrationState)
+    {
+        case Calibration_idle:
+        break;
+
+        case Initializing:
+        break;
+
+        case Wait_temp_lo:
+        WaitForTemp(cal_temp_lo, tempReading);
+        break;
+
+        case Calibrating_temp_lo:
+        CalibrateLoHi(cal_temp_lo, samples_lo_average_precision, tempReading);
+        break;
+
+        case Wait_temp_hi:
+        WaitForTemp(cal_temp_hi, tempReading);
+        break;;
+
+        case Calibrating_temp_hi:
+        CalibrateLoHi(cal_temp_hi, samples_hi_average_precision, tempReading);
+        break;
+
+        case Finalize:
+        FinalizeCalibration(tempReading);
+        break;
+
+    }
 }
 
 void WaitForTemp(float cal_temp, struct TempReading tempReading)
@@ -67,29 +105,23 @@ void WaitForTemp(float cal_temp, struct TempReading tempReading)
     
     for (int i = 0; i < 8; ++i)
     {
-        if (strcmp(tempReading.ucMessageID[i], "") == 0 )
+        if (strcmp(tempReading.ucMessageID[i], "") != 0 )
         {
-            //printf("Sensor%did       :                  Reading: %3.2f   Corrected: %3.2f \n",i, tempReading.ucReading[i], tempReading.ucCorrected[i] );
+             printf("%3.2f\t", tempReading.ucReading[i]);
             
         }
-        else 
-        {
-            printf("%3.2f\t", tempReading.ucReading[i]);
-            //printf("%lld;%d;%s;%3.2f;%3.2f\n", esp_timer_get_time() ,i, tempReading.ucMessageID[i], tempReading.ucReading[i], tempReading.ucCorrected[i] );
-        }
-
     }
     printf("\n");
 
 
     bool next_state = true;
 
-    for(int i=0; i<8; i++ )
+    for(int i=0; i< sensor_count; i++ )
     {
-        if(strcmp(tempReading.ucMessageID[i],"") !=0 && fabs(tempReading.ucReading[i] - cal_temp) > cal_temp_tolerance)
+        if(fabs(tempReading.ucReading[i] - cal_temp) > cal_temp_tolerance)
         {
             next_state = false;
-            i=8;
+            i=sensor_count;
         }
     }
     
@@ -99,95 +131,76 @@ void WaitForTemp(float cal_temp, struct TempReading tempReading)
     }
 }
 
-void CalibrateLo(struct TempReading tempReading)
+void CalibrateLoHi(float cal_temp, float sample_average_precision[8][2], struct TempReading tempReading)
 {
     printf("Calibrating - Waiting for precision requirement.\n");
 
     int write_location = (sample_count % streak_size) ; // Overwrite results if sample_count exceeds streak_size.
 
-    //Add new temperature values to sample array
-    for(int i=0; i<8; i++ ) 
+    //Check if measurement is still withn tolerance
+    for(int i=0; i< sensor_count; i++ )
     {
-        if(strcmp(tempReading.ucMessageID[i],"") !=0)
+        if(fabs(tempReading.ucReading[i] - cal_temp) > cal_temp_tolerance)
         {
-            samples[i][write_location] = tempReading.ucReading[i];
+            CalibrationState--;
+            sample_count = 0;
+            return;
         }
+    }
+
+    //Add new temperature values to sample array
+    for(int i = 0; i < sensor_count; i++ ) 
+    {
+        samples[i][write_location] = tempReading.ucReading[i];
     }
 
     sample_count++; //increase sample count
 
-    //Print Sample data
-    printf("\nSamplecount: %d \nWrite location: %d\n",sample_count, write_location);
+    //Determine amount of samples in set.
+    int read_size;
+    if(sample_count < streak_size){read_size = sample_count;} //limit sample read amount to streak_size
+    else{read_size = streak_size;}
 
-    for (int i = 0; i < streak_size; ++i)
-    {
-        for (int j = 0; j < 8 ; j++)
-        {
-            if (strcmp(tempReading.ucMessageID[j], "") != 0 )
-            {
-                printf("%3.2f\t",samples[j][i]);              
-            }
-        }
-        printf("\n");
-    }
-    printf("\n");
+
+    //Print Sample data
+    PrintSampleData(samples, read_size, write_location);
 
     //Sample set aggregate calculation
-    for(int i=0; i<8; i++ ) //loop through sample sets
+    for(int i=0; i< sensor_count; i++ ) //loop through sample sets
     {
-        if(strcmp(tempReading.ucMessageID[i],"") !=0) //Disregard no-sensor sets
-        {    
-
-            float sample_sum=0;
-            float hi=0;
-            float lo=0;
-            int read_size;
-
-            if(sample_count < streak_size){read_size = sample_count;} //limit sample read amount to streak_size
-            else{read_size = streak_size;}
-
-            for(int j=0; j < read_size; j++) //calculate sample set aggregates
-            {
-                float current_sample = samples[i][j];
-                sample_sum += current_sample;
-                
-                if(j == 0)
-                {
-                    hi = current_sample;
-                    lo = current_sample;
-                }
-                if(j > 0 && hi < current_sample) 
-                {
-                    hi = current_sample;
-                }
-                if(j > 0 && lo > current_sample) 
-                {
-                    lo = current_sample;
-                }
-
-                sample_average_precision[i][0] = sample_sum / read_size;
-                sample_average_precision[i][1] = fabs(hi-lo); 
-                
-            }
-        }
-    }
-    
-    //Print Aggregation data
-    for (int i = 0; i < 2; ++i)
-    {
-        for (int j = 0; j < 8 ; j++)
+        float sample_sum=0;
+        float hi=0;
+        float lo=0;
+        
+        for(int j=0; j < read_size; j++) //calculate sample set aggregates
         {
-            if (strcmp(tempReading.ucMessageID[j], "") != 0 )
+            float current_sample = samples[i][j]; //Calculate sample set average
+            sample_sum += current_sample;
+            
+            if(j == 0) //Calculate date set bandwidth
             {
-                printf("%3.2f\t",sample_average_precision[j][i]);              
+                hi = current_sample;
+                lo = current_sample;
             }
+            if(j > 0 && hi < current_sample) 
+            {
+                hi = current_sample;
+            }
+            if(j > 0 && lo > current_sample) 
+            {
+                lo = current_sample;
+            }
+
+            sample_average_precision[i][0] = sample_sum / read_size;
+            sample_average_precision[i][1] = fabs(hi-lo); 
         }
-        printf("\n");
     }
-    printf("\n");
+
+    //Print aggergation data
+    PrintAggregationData(sample_average_precision);
 
     //
-    //Implement communication aggregate data to front end
+    //Implement communication aggregate data to frontend
     //
 
 
@@ -196,56 +209,99 @@ void CalibrateLo(struct TempReading tempReading)
     {
         bool next_state = true;
 
-        for(int i=0; i<8;i++)
+        for(int i=0; i < sensor_count;i++)
         {
-            if(strcmp(tempReading.ucMessageID[i],"") !=0 && sample_average_precision[i][1] > streak_precision ) //Disregard no-sensor sets ///Implement tolarance requirement.
+            if(sample_average_precision[i][1] > streak_precision )
             { 
                 next_state = false;
-                i=8;
+                i = sensor_count;
             }
         }
         if(next_state)
         {
+            printf("Calibration of %3.2f°C completed.\n\n", cal_temp);
+
             CalibrationState++;
+            sample_count = 0;
         }
     }
 }
 
-void Calibrate(struct TempReading tempReading)
-{
-    printf("CalibrationState: %d\n", CalibrationState);
-    if(CalibrationState == wait_temp_lo)
+void FinalizeCalibration(struct TempReading tempReading)
+{   
+    printf("Original CorrectionDataTable:\n");
+    PrintCorrectionDataTable();
+
+    //Calculate correction parameters from calibration data.
+    for(int i = 0; i < sensor_count; i++)
     {
-        WaitForTemp(cal_temp_lo, tempReading);
+        float temp_hi = samples_hi_average_precision[i][0];
+        float temp_lo = samples_lo_average_precision[i][0];
+
+        float rc = (temp_hi-temp_lo)/(cal_temp_hi-cal_temp_lo);
+        float y_crossing = temp_lo - (cal_temp_lo * rc);
+
+        float a = 1/rc;
+        float b = -y_crossing;
+
+        //Save results in correction parameters
+        samples_correction_parameters[i][0] = a;
+        samples_correction_parameters[i][1] = b;
     }
-    if(CalibrationState == calibrating_temp_lo)
+
+    //Update CorrectionDataTable with new parameters
+    for(int i = 0; i < sensor_count; i++)
     {
-        CalibrateLo(tempReading);
+        //Find matching sensor id in CorrectionDataTable and overwrite parameters.
+        bool sensor_match = false;
+
+        for(int j = 0; j < 8; j++)
+        {
+            if(strcmp(tempReading.ucMessageID[i], correctionDataTable[j].device) == 0)
+            {
+                correctionDataTable[j].a = samples_correction_parameters[i][0];
+                correctionDataTable[j].b = samples_correction_parameters[i][1];
+                
+                sensor_match = true;
+                j=8;
+            }
+        }
+
+        //If no match is found in CorrectionDataTable, find first empty space and write parameters.
+        if(!sensor_match)
+        {
+            for(int j = 0; j < 8; j++)
+            {
+                if(strcmp(correctionDataTable[j].device, "                ") == 0)
+                {
+                    memcpy(correctionDataTable[j].device, tempReading.ucMessageID[i], sizeof(tempReading.ucMessageID[i]));
+
+                    correctionDataTable[j].a = samples_correction_parameters[i][0];
+                    correctionDataTable[j].b = samples_correction_parameters[i][1];
+                    
+                    j=8;
+                }
+            }
+        }
     }
-    if(CalibrationState == wait_temp_hi)
-    {
-        WaitForTemp(cal_temp_hi, tempReading);
-    }
-        if(CalibrationState == calibrating_temp_hi)
-    {
-        CalibrateLo(tempReading);
-    }
+    printf("Modified CorrectionDataTable:\n");
+    PrintCorrectionDataTable();
+
+    CalibrationState = Calibration_idle;
 }
 
 void TempResultCorrect (struct TempReading *tempReading)
 {
-    int matchcount = 0;
-        for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < 8; ++i)
     {
         bool blCorrected = 0;
 
         for (int j = 0; j < 8; ++j)
         {
-            
             if ((strcmp((*tempReading).ucMessageID[i], "") !=0 && strcmp((*tempReading).ucMessageID[i], correctionDataTable[j].device) == 0 ))
             {
-                (*tempReading).ucCorrected[i] = ((*tempReading).ucReading[i] + correctionDataTable[j].b) *correctionDataTable[j].a;
-                ++matchcount;
+                (*tempReading).ucCorrected[i] = ((*tempReading).ucReading[i] + correctionDataTable[j].b) * correctionDataTable[j].a;
+
                 blCorrected = 1;
                 j=8;
             }
@@ -257,6 +313,57 @@ void TempResultCorrect (struct TempReading *tempReading)
     }
 }
 
+int CountSensors(struct TempReading tempReading)
+{
+    int sensor_count = 0;
+
+    for(int i = 0 ; i < 8; i++)
+    {
+        if (strcmp(tempReading.ucMessageID[i], "") != 0 )
+        {
+            sensor_count++;  
+        }
+    }
+    return sensor_count;
+}
+
+void PrintSampleData(float samples[8][60], int read_size, int write_location )
+{
+       printf("\nSamplecount: %d \nWrite location: %d\n", sample_count, write_location);
+
+    for (int i = 0; i < read_size; ++i)
+    {
+        for (int j = 0; j < sensor_count ; j++)
+        {
+            printf("%3.2f\t",samples[j][i]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+void PrintAggregationData(float sample_average_precision[8][2])
+{
+        //Print Aggregation data
+    for (int i = 0; i < 2; ++i)
+    {
+        for (int j = 0; j < sensor_count ; j++)
+        {
+            printf("%3.2f\t",sample_average_precision[j][i]);              
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+void PrintCorrectionDataTable()
+{
+    for(int i = 0; i < 8; i++)
+    {
+        printf("%s\t%3.2f\t%3.2f\n", correctionDataTable[i].device, correctionDataTable[i].a, correctionDataTable[i].b);
+    }
+}
+
 void SetCalibrationTable (struct CorrectionData correctionDataTable)
 {
      //EEPROM.set(100, correctionDataTable);
@@ -265,5 +372,4 @@ void SetCalibrationTable (struct CorrectionData correctionDataTable)
 void GetCalibrationTable (struct CorrectionData *correctionDataTable)
 {
     //EEPROM.get(100, *correctionDataTable);
-
 }

@@ -19,12 +19,26 @@ struct CorrectionData
 
 enum SystemStates 
 {
-    Idle,
+    System_idle,
     Calibrating,
     Session_idle,
     Session_heating,
     Session_maintaining
 };
+
+enum CalibrationStates
+{
+    Calibration_idle,
+    Initializing,
+    Wait_temp_lo,
+    Calibrating_temp_lo,
+    Wait_temp_hi,
+    Calibrating_temp_hi,
+    Finalize
+};
+
+
+
 
 #endif
 
